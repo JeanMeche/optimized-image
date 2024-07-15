@@ -1,13 +1,13 @@
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { NgOptimizedImage } from '@angular/common';
+import { ChildComponent } from './test/child.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet],
-  templateUrl: './app.component.html',
-  styleUrl: './app.component.css'
+  imports: [NgOptimizedImage, ChildComponent],
+  template: `<img ngSrc="../assets/cat.jpg" priority />
+
+    <app-child />`,
 })
-export class AppComponent {
-  title = 'test';
-}
+export class AppComponent {}

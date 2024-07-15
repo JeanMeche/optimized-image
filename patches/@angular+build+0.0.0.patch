@@ -1,0 +1,486 @@
+diff --git a/node_modules/@angular/build/src/builders/application/options.js b/node_modules/@angular/build/src/builders/application/options.js
+index e4f47e7..08ef066 100755
+--- a/node_modules/@angular/build/src/builders/application/options.js
++++ b/node_modules/@angular/build/src/builders/application/options.js
+@@ -242,7 +242,7 @@ async function normalizeOptions(context, projectName, options, extensions) {
+         plugins: extensions?.codePlugins?.length ? extensions?.codePlugins : undefined,
+         loaderExtensions,
+         jsonLogs: environment_options_1.useJSONBuildLogs,
+-        colors: color_1.colors.enabled,
++        colors: (0, color_1.supportColor)(),
+         clearScreen,
+         define,
+     };
+diff --git a/node_modules/@angular/build/src/builders/extract-i18n/builder.js b/node_modules/@angular/build/src/builders/extract-i18n/builder.js
+index 002ec0f..dfbbd6c 100755
+--- a/node_modules/@angular/build/src/builders/extract-i18n/builder.js
++++ b/node_modules/@angular/build/src/builders/extract-i18n/builder.js
+@@ -128,12 +128,13 @@ async function createSerializer(localizeToolsModule, format, sourceLocale, baseP
+         case schema_1.Format.LegacyMigrate:
+             return new LegacyMessageIdMigrationSerializer(diagnostics);
+         case schema_1.Format.Arb:
+-            const fileSystem = {
++            return new ArbTranslationSerializer(sourceLocale, 
++            // eslint-disable-next-line @typescript-eslint/no-explicit-any
++            basePath, {
+                 relative(from, to) {
+                     return node_path_1.default.relative(from, to);
+                 },
+-            };
+-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+-            return new ArbTranslationSerializer(sourceLocale, basePath, fileSystem);
++                // eslint-disable-next-line @typescript-eslint/no-explicit-any
++            });
+     }
+ }
+diff --git a/node_modules/@angular/build/src/builders/extract-i18n/options.js b/node_modules/@angular/build/src/builders/extract-i18n/options.js
+index f712b06..8091a03 100755
+--- a/node_modules/@angular/build/src/builders/extract-i18n/options.js
++++ b/node_modules/@angular/build/src/builders/extract-i18n/options.js
+@@ -37,8 +37,8 @@ async function normalizeOptions(context, projectName, options) {
+     // Normalize xliff format extensions
+     let format = options.format;
+     switch (format) {
+-        case undefined:
+         // Default format is xliff1
++        case undefined:
+         case schema_1.Format.Xlf:
+         case schema_1.Format.Xlif:
+         case schema_1.Format.Xliff:
+diff --git a/node_modules/@angular/build/src/tools/angular/transformers/jit-bootstrap-transformer.js b/node_modules/@angular/build/src/tools/angular/transformers/jit-bootstrap-transformer.js
+index c359a32..78baa61 100755
+--- a/node_modules/@angular/build/src/tools/angular/transformers/jit-bootstrap-transformer.js
++++ b/node_modules/@angular/build/src/tools/angular/transformers/jit-bootstrap-transformer.js
+@@ -98,9 +98,8 @@ function elideImports(sourceFile, removedNodes, getTypeChecker, compilerOptions)
+         let symbol;
+         switch (node.kind) {
+             case typescript_1.default.SyntaxKind.Identifier:
+-                const parent = node.parent;
+-                if (parent && typescript_1.default.isShorthandPropertyAssignment(parent)) {
+-                    const shorthandSymbol = typeChecker.getShorthandAssignmentValueSymbol(parent);
++                if (node.parent && typescript_1.default.isShorthandPropertyAssignment(node.parent)) {
++                    const shorthandSymbol = typeChecker.getShorthandAssignmentValueSymbol(node.parent);
+                     if (shorthandSymbol) {
+                         symbol = shorthandSymbol;
+                     }
+diff --git a/node_modules/@angular/build/src/tools/angular/transformers/jit-resource-transformer.js b/node_modules/@angular/build/src/tools/angular/transformers/jit-resource-transformer.js
+index cc35f9c..b57a38a 100755
+--- a/node_modules/@angular/build/src/tools/angular/transformers/jit-resource-transformer.js
++++ b/node_modules/@angular/build/src/tools/angular/transformers/jit-resource-transformer.js
+@@ -116,7 +116,7 @@ function visitComponentMetadata(nodeFactory, node, styleReplacements, resourceIm
+                 return undefined;
+             }
+             return node;
+-        case 'styleUrls':
++        case 'styleUrls': {
+             if (!typescript_1.default.isArrayLiteralExpression(node.initializer)) {
+                 return node;
+             }
+@@ -132,6 +132,7 @@ function visitComponentMetadata(nodeFactory, node, styleReplacements, resourceIm
+             styleReplacements.push(...externalStyles);
+             // The external styles will be added afterwards in combination with any inline styles
+             return undefined;
++        }
+         default:
+             // All other elements are passed through
+             return node;
+diff --git a/node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js b/node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js
+index 7584098..796b440 100755
+--- a/node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js
++++ b/node_modules/@angular/build/src/tools/esbuild/application-code-bundle.js
+@@ -23,6 +23,7 @@ const compiler_plugin_1 = require("./angular/compiler-plugin");
+ const compiler_plugin_options_1 = require("./compiler-plugin-options");
+ const external_packages_plugin_1 = require("./external-packages-plugin");
+ const i18n_locale_plugin_1 = require("./i18n-locale-plugin");
++const loader_import_attribute_plugin_1 = require("./loader-import-attribute-plugin");
+ const rxjs_esm_resolution_plugin_1 = require("./rxjs-esm-resolution-plugin");
+ const sourcemap_ignorelist_plugin_1 = require("./sourcemap-ignorelist-plugin");
+ const utils_1 = require("./utils");
+@@ -45,6 +46,7 @@ function createBrowserCodeBundleOptions(options, target, sourceFileCache) {
+         target,
+         supported: (0, utils_1.getFeatureSupport)(target, zoneless),
+         plugins: [
++            (0, loader_import_attribute_plugin_1.createLoaderImportAttributePlugin)(),
+             (0, wasm_plugin_1.createWasmPlugin)({ allowAsync: zoneless, cache: sourceFileCache?.loadResultCache }),
+             (0, sourcemap_ignorelist_plugin_1.createSourcemapIgnorelistPlugin)(),
+             (0, compiler_plugin_1.createCompilerPlugin)(
+@@ -146,6 +148,7 @@ function createServerCodeBundleOptions(options, target, sourceFileCache) {
+         entryPoints,
+         supported: (0, utils_1.getFeatureSupport)(target, zoneless),
+         plugins: [
++            (0, loader_import_attribute_plugin_1.createLoaderImportAttributePlugin)(),
+             (0, wasm_plugin_1.createWasmPlugin)({ allowAsync: zoneless, cache: sourceFileCache?.loadResultCache }),
+             (0, sourcemap_ignorelist_plugin_1.createSourcemapIgnorelistPlugin)(),
+             (0, compiler_plugin_1.createCompilerPlugin)(
+@@ -249,8 +252,9 @@ function getEsBuildCommonOptions(options) {
+     }
+     return {
+         absWorkingDir: workspaceRoot,
+-        bundle: true,
+         format: 'esm',
++        bundle: true,
++        packages: 'bundle',
+         assetNames: outputNames.media,
+         conditions: ['es2020', 'es2015', 'module'],
+         resolveExtensions: ['.ts', '.tsx', '.mjs', '.js', '.cjs'],
+diff --git a/node_modules/@angular/build/src/tools/esbuild/budget-stats.js b/node_modules/@angular/build/src/tools/esbuild/budget-stats.js
+index 3851dad..42147ab 100755
+--- a/node_modules/@angular/build/src/tools/esbuild/budget-stats.js
++++ b/node_modules/@angular/build/src/tools/esbuild/budget-stats.js
+@@ -45,7 +45,10 @@ function generateBudgetStats(metafile, outputFiles, initialFiles) {
+     }
+     // Add component styles from metafile
+     // TODO: Provide this information directly from the AOT compiler
+-    for (const entry of Object.values(metafile.outputs)) {
++    for (const [file, entry] of Object.entries(metafile.outputs)) {
++        if (!file.endsWith('.css')) {
++            continue;
++        }
+         // 'ng-component' is set by the angular plugin's component stylesheet bundler
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         const componentStyle = entry['ng-component'];
+diff --git a/node_modules/@angular/build/src/tools/esbuild/loader-import-attribute-plugin.d.ts b/node_modules/@angular/build/src/tools/esbuild/loader-import-attribute-plugin.d.ts
+new file mode 100755
+index 0000000..ed86af0
+--- /dev/null
++++ b/node_modules/@angular/build/src/tools/esbuild/loader-import-attribute-plugin.d.ts
+@@ -0,0 +1,9 @@
++/**
++ * @license
++ * Copyright Google LLC All Rights Reserved.
++ *
++ * Use of this source code is governed by an MIT-style license that can be
++ * found in the LICENSE file at https://angular.dev/license
++ */
++import type { Plugin } from 'esbuild';
++export declare function createLoaderImportAttributePlugin(): Plugin;
+diff --git a/node_modules/@angular/build/src/tools/esbuild/loader-import-attribute-plugin.js b/node_modules/@angular/build/src/tools/esbuild/loader-import-attribute-plugin.js
+new file mode 100755
+index 0000000..68d359f
+--- /dev/null
++++ b/node_modules/@angular/build/src/tools/esbuild/loader-import-attribute-plugin.js
+@@ -0,0 +1,111 @@
++"use strict";
++/**
++ * @license
++ * Copyright Google LLC All Rights Reserved.
++ *
++ * Use of this source code is governed by an MIT-style license that can be
++ * found in the LICENSE file at https://angular.dev/license
++ */
++var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
++    if (k2 === undefined) k2 = k;
++    var desc = Object.getOwnPropertyDescriptor(m, k);
++    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
++      desc = { enumerable: true, get: function() { return m[k]; } };
++    }
++    Object.defineProperty(o, k2, desc);
++}) : (function(o, m, k, k2) {
++    if (k2 === undefined) k2 = k;
++    o[k2] = m[k];
++}));
++var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
++    Object.defineProperty(o, "default", { enumerable: true, value: v });
++}) : function(o, v) {
++    o["default"] = v;
++});
++var __importStar = (this && this.__importStar) || function (mod) {
++    if (mod && mod.__esModule) return mod;
++    var result = {};
++    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
++    __setModuleDefault(result, mod);
++    return result;
++};
++Object.defineProperty(exports, "__esModule", { value: true });
++exports.createLoaderImportAttributePlugin = createLoaderImportAttributePlugin;
++const promises_1 = require("node:fs/promises");
++const node_path_1 = require("node:path");
++const error_1 = require("../../utils/error");
++const cache_1 = require("./cache");
++const SUPPORTED_LOADERS = ['binary', 'file', 'text'];
++function createLoaderImportAttributePlugin() {
++    return {
++        name: 'angular-loader-import-attributes',
++        setup(build) {
++            let imageSizer;
++            const imageDataCache = new cache_1.MemoryCache();
++            build.onEnd(() => {
++                imageDataCache.clear();
++            });
++            build.onLoad({ filter: /./ }, async (args) => {
++                const loader = args.with['loader'];
++                if (!loader) {
++                    return undefined;
++                }
++                // Loader type that provides image metadata as named exports in addition to `file` loader behavior.
++                // This is used by the AOT compiler to support the optimized image functionality.
++                if (loader === 'image-file') {
++                    let contents = `import imagePath from ${JSON.stringify('./' + (0, node_path_1.basename)(args.path))} with { loader: "file" }\n`;
++                    contents += 'export default imagePath;\n';
++                    // Calculate width and height
++                    imageSizer ??= await Promise.resolve().then(() => __importStar(require('image-size')));
++                    // The image data is required to determine the dimensions and is cached in the plugin to minimize FS access
++                    const imageData = await imageDataCache.getOrCreate(args.path, async () => await (0, promises_1.readFile)(args.path));
++                    let warnings;
++                    try {
++                        const result = imageSizer.imageSize(imageData);
++                        if (typeof result.height === 'number' && typeof result.width === 'number') {
++                            contents += `const width = ${result.width};\nconst height = ${result.height};\nexport { width, height }\n`;
++                        }
++                        else {
++                            warnings = [
++                                {
++                                    text: 'Image dimensions unavailable within file',
++                                },
++                            ];
++                        }
++                    }
++                    catch (error) {
++                        (0, error_1.assertIsError)(error);
++                        return {
++                            errors: [{ text: 'Unable to analyze image file', notes: [{ text: error.message }] }],
++                        };
++                    }
++                    return {
++                        contents,
++                        resolveDir: (0, node_path_1.dirname)(args.path),
++                        loader: 'js',
++                        warnings,
++                    };
++                }
++                if (!SUPPORTED_LOADERS.includes(loader)) {
++                    return {
++                        errors: [
++                            {
++                                text: 'Unsupported loader import attribute',
++                                notes: [
++                                    { text: 'Attribute value must be one of: ' + SUPPORTED_LOADERS.join(', ') },
++                                ],
++                            },
++                        ],
++                    };
++                }
++                // Use image data cache if present to avoid repeat file access for `image-file` loader types
++                let contents = await imageDataCache.get(args.path);
++                contents ??= await (0, promises_1.readFile)(args.path);
++                return {
++                    contents,
++                    loader,
++                };
++            });
++        },
++    };
++}
+diff --git a/node_modules/@angular/build/src/tools/esbuild/utils.js b/node_modules/@angular/build/src/tools/esbuild/utils.js
+index 82d61cc..06ae0fe 100755
+--- a/node_modules/@angular/build/src/tools/esbuild/utils.js
++++ b/node_modules/@angular/build/src/tools/esbuild/utils.js
+@@ -27,6 +27,7 @@ exports.logMessages = logMessages;
+ exports.isZonelessApp = isZonelessApp;
+ exports.getEntryPointName = getEntryPointName;
+ const esbuild_1 = require("esbuild");
++const listr2_1 = require("listr2");
+ const node_crypto_1 = require("node:crypto");
+ const node_fs_1 = require("node:fs");
+ const promises_1 = __importDefault(require("node:fs/promises"));
+@@ -34,7 +35,6 @@ const node_path_1 = require("node:path");
+ const node_url_1 = require("node:url");
+ const node_zlib_1 = require("node:zlib");
+ const semver_1 = require("semver");
+-const spinner_1 = require("../../utils/spinner");
+ const stats_table_1 = require("../../utils/stats-table");
+ const bundler_context_1 = require("./bundler-context");
+ function logBuildStats(metafile, outputFiles, initial, budgetFailures, colors, changedFiles, estimatedTransferSizes, ssrOutputEnabled, verbose) {
+@@ -124,14 +124,17 @@ async function calculateEstimatedTransferSizes(outputFiles) {
+     });
+ }
+ async function withSpinner(text, action) {
+-    const spinner = new spinner_1.Spinner(text);
+-    spinner.start();
+-    try {
+-        return await action();
+-    }
+-    finally {
+-        spinner.stop();
+-    }
++    let result;
++    const taskList = new listr2_1.Listr([
++        {
++            title: text,
++            async task() {
++                result = await action();
++            },
++        },
++    ], { rendererOptions: { clearOutput: true } });
++    await taskList.run();
++    return result;
+ }
+ async function withNoProgress(text, action) {
+     return action();
+diff --git a/node_modules/@angular/build/src/utils/color.d.ts b/node_modules/@angular/build/src/utils/color.d.ts
+index 3407253..4170315 100755
+--- a/node_modules/@angular/build/src/utils/color.d.ts
++++ b/node_modules/@angular/build/src/utils/color.d.ts
+@@ -5,6 +5,5 @@
+  * Use of this source code is governed by an MIT-style license that can be
+  * found in the LICENSE file at https://angular.dev/license
+  */
+-import * as ansiColors from 'ansi-colors';
+-declare const colors: typeof ansiColors;
+-export { colors };
++export { color as colors, figures } from 'listr2';
++export declare function supportColor(stream?: NodeJS.WritableStream): boolean;
+diff --git a/node_modules/@angular/build/src/utils/color.js b/node_modules/@angular/build/src/utils/color.js
+index cc35af9..8c44583 100755
+--- a/node_modules/@angular/build/src/utils/color.js
++++ b/node_modules/@angular/build/src/utils/color.js
+@@ -6,58 +6,22 @@
+  * Use of this source code is governed by an MIT-style license that can be
+  * found in the LICENSE file at https://angular.dev/license
+  */
+-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+-    if (k2 === undefined) k2 = k;
+-    var desc = Object.getOwnPropertyDescriptor(m, k);
+-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+-      desc = { enumerable: true, get: function() { return m[k]; } };
+-    }
+-    Object.defineProperty(o, k2, desc);
+-}) : (function(o, m, k, k2) {
+-    if (k2 === undefined) k2 = k;
+-    o[k2] = m[k];
+-}));
+-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+-    Object.defineProperty(o, "default", { enumerable: true, value: v });
+-}) : function(o, v) {
+-    o["default"] = v;
+-});
+-var __importStar = (this && this.__importStar) || function (mod) {
+-    if (mod && mod.__esModule) return mod;
+-    var result = {};
+-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+-    __setModuleDefault(result, mod);
+-    return result;
+-};
+ Object.defineProperty(exports, "__esModule", { value: true });
+-exports.colors = void 0;
+-const ansiColors = __importStar(require("ansi-colors"));
++exports.figures = exports.colors = void 0;
++exports.supportColor = supportColor;
+ const node_tty_1 = require("node:tty");
+-function supportColor() {
+-    if (process.env.FORCE_COLOR !== undefined) {
+-        // 2 colors: FORCE_COLOR = 0 (Disables colors), depth 1
+-        // 16 colors: FORCE_COLOR = 1, depth 4
+-        // 256 colors: FORCE_COLOR = 2, depth 8
+-        // 16,777,216 colors: FORCE_COLOR = 3, depth 16
+-        // See: https://nodejs.org/dist/latest-v12.x/docs/api/tty.html#tty_writestream_getcolordepth_env
+-        // and https://github.com/nodejs/node/blob/b9f36062d7b5c5039498e98d2f2c180dca2a7065/lib/internal/tty.js#L106;
+-        switch (process.env.FORCE_COLOR) {
+-            case '':
+-            case 'true':
+-            case '1':
+-            case '2':
+-            case '3':
+-                return true;
+-            default:
+-                return false;
+-        }
++var listr2_1 = require("listr2");
++Object.defineProperty(exports, "colors", { enumerable: true, get: function () { return listr2_1.color; } });
++Object.defineProperty(exports, "figures", { enumerable: true, get: function () { return listr2_1.figures; } });
++function supportColor(stream = process.stdout) {
++    if (stream instanceof node_tty_1.WriteStream) {
++        return stream.hasColors();
++    }
++    try {
++        // The hasColors function does not rely on any instance state and should ideally be static
++        return node_tty_1.WriteStream.prototype.hasColors();
+     }
+-    if (process.stdout instanceof node_tty_1.WriteStream) {
+-        return process.stdout.hasColors();
++    catch {
++        return process.env['FORCE_COLOR'] !== undefined && process.env['FORCE_COLOR'] !== '0';
+     }
+-    return false;
+ }
+-// Create a separate instance to prevent unintended global changes to the color configuration
+-const colors = ansiColors.create();
+-exports.colors = colors;
+-colors.enabled = supportColor();
+diff --git a/node_modules/@angular/build/src/utils/index-file/inline-fonts.js b/node_modules/@angular/build/src/utils/index-file/inline-fonts.js
+index cc20e32..da49741 100755
+--- a/node_modules/@angular/build/src/utils/index-file/inline-fonts.js
++++ b/node_modules/@angular/build/src/utils/index-file/inline-fonts.js
+@@ -137,7 +137,7 @@ class InlineFontsProcessor {
+                         rewriter.emitRaw(`<link rel="preconnect" href="${url}" crossorigin>`);
+                     }
+                     break;
+-                case 'link':
++                case 'link': {
+                     const hrefAttr = attrs.some(({ name, value }) => name === 'rel' && value === 'stylesheet') &&
+                         attrs.find(({ name, value }) => name === 'href' && hrefsContent.has(value));
+                     if (hrefAttr) {
+@@ -149,6 +149,7 @@ class InlineFontsProcessor {
+                         rewriter.emitStartTag(tag);
+                     }
+                     break;
++                }
+                 default:
+                     rewriter.emitStartTag(tag);
+                     break;
+diff --git a/node_modules/@angular/build/src/utils/normalize-cache.js b/node_modules/@angular/build/src/utils/normalize-cache.js
+index 38896a3..4e99351 100755
+--- a/node_modules/@angular/build/src/utils/normalize-cache.js
++++ b/node_modules/@angular/build/src/utils/normalize-cache.js
+@@ -10,7 +10,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.normalizeCacheOptions = normalizeCacheOptions;
+ const node_path_1 = require("node:path");
+ /** Version placeholder is replaced during the build process with actual package version */
+-const VERSION = '18.1.0';
++const VERSION = '0.0.0';
+ function hasCacheMetadata(value) {
+     return (!!value &&
+         typeof value === 'object' &&
+diff --git a/node_modules/@angular/build/src/utils/server-rendering/fetch-patch.js b/node_modules/@angular/build/src/utils/server-rendering/fetch-patch.js
+index 747b48c..330e438 100755
+--- a/node_modules/@angular/build/src/utils/server-rendering/fetch-patch.js
++++ b/node_modules/@angular/build/src/utils/server-rendering/fetch-patch.js
+@@ -12,7 +12,6 @@ const mrmime_1 = require("mrmime");
+ const promises_1 = require("node:fs/promises");
+ const node_path_1 = require("node:path");
+ const node_worker_threads_1 = require("node:worker_threads");
+-const undici_1 = require("undici");
+ /**
+  * This is passed as workerData when setting up the worker via the `piscina` package.
+  */
+@@ -20,8 +19,7 @@ const { assetFiles } = node_worker_threads_1.workerData;
+ const assetsCache = new Map();
+ const RESOLVE_PROTOCOL = 'resolve:';
+ function patchFetchToLoadInMemoryAssets() {
+-    const global = globalThis;
+-    const originalFetch = global.fetch;
++    const originalFetch = globalThis.fetch;
+     const patchedFetch = async (input, init) => {
+         let url;
+         if (input instanceof URL) {
+@@ -45,7 +43,7 @@ function patchFetchToLoadInMemoryAssets() {
+         const cachedAsset = assetsCache.get(pathname);
+         if (cachedAsset) {
+             const { content, headers } = cachedAsset;
+-            return new undici_1.Response(content, {
++            return new Response(content, {
+                 headers,
+             });
+         }
+@@ -58,9 +56,9 @@ function patchFetchToLoadInMemoryAssets() {
+             }
+             : undefined;
+         assetsCache.set(pathname, { headers, content });
+-        return new undici_1.Response(content, {
++        return new Response(content, {
+             headers,
+         });
+     };
+-    global.fetch = patchedFetch;
++    globalThis.fetch = patchedFetch;
+ }
